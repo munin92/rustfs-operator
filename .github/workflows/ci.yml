@@ -39,3 +39,18 @@ jobs:
         run: cargo test --features integration --test integration_rustfs
       - name: E2E tests (k3s + RustFS containers)
         run: cargo test --features e2e --test e2e_k3s
+
+  # Validates the Dockerfile and seeds the buildx GHA cache on the default
+  # branch, so tag-triggered release builds can restore it (Actions cache is
+  # isolated per ref except for the default branch).
+  image-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
