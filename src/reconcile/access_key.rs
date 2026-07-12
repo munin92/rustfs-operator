@@ -281,7 +281,13 @@ async fn cleanup(obj: Arc<AccessKey>, ctx: &Context) -> Result<Action> {
     if known_ak.is_none() {
         return Ok(Action::await_change());
     }
-    let password = secret_key_value(&ctx.client, &ns, &obj.spec.password_ref, "password").await?;
+    // Best-effort password read: on `helm uninstall` the password Secret and
+    // this CR are often deleted together. Revocation tries the admin
+    // credentials first, so an empty password still succeeds; it is only
+    // needed for the user-scoped fallback.
+    let password = secret_key_value(&ctx.client, &ns, &obj.spec.password_ref, "password")
+        .await
+        .unwrap_or_default();
     let fs = provider_for(&ctx.client, &ns, &obj.spec.connection).await?;
     cleanup_access_key(
         &fs,
