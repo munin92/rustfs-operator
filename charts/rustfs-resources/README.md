@@ -36,8 +36,14 @@ policies:
 
 users:
   - name: app-user
-    policies: ["app-data-rw"]
-    secretKeyRef:                # existing Secret with key `secretKey`
+    policies: ["app-data-rw"]    # must include admin:*ServiceAccount actions
+    passwordRef:                 # existing Secret with key `password`
+      name: app-user-creds
+
+accessKeys:
+  - name: app-key                # operator writes AK/SK to Secret
+    user: app-user               # "app-key-credentials" in this namespace
+    passwordRef:
       name: app-user-creds
 ```
 
@@ -48,17 +54,25 @@ users:
 | `connection.clusterRef` / `connection.secretRef` | default connection (exactly one) |
 | `buckets[]` | `name` (required), `bucketName`, `versioning`, `quotaBytes`, `deletionPolicy`, `connection` |
 | `policies[]` | `name` (required), `document` (required), `policyName`, `deletionPolicy`, `connection` |
-| `users[]` | `name` (required), `accessKey`, `secretKeyRef` **or** inline `secretKey`, `policies`, `enabled`, `deletionPolicy`, `connection` |
+| `users[]` | `name` (required), `username`, `passwordRef` **or** inline `password`, `policies`, `enabled`, `deletionPolicy`, `connection` |
+| `accessKeys[]` | `name`, `user` (required), `passwordRef` **or** `passwordFromUser`, `accessKey`, `description`, `policy`, `targetSecretName`, `deletionPolicy`, `connection` |
 
 Fields you omit stay unmanaged (e.g. no `versioning` key means the operator
 never touches versioning). `deletionPolicy` defaults to `Delete` — the
 remote resource is removed when the CR is deleted; use `Retain` to keep it.
 
-**User secret keys**: `secretKeyRef` points at an existing Secret in the
-release namespace. Alternatively set `secretKey` inline and the chart
-creates `<release>-user-<name>` — but the key then lives in the Helm
-release values; prefer `secretKeyRef` in production. The secret key is only
-applied when the user is first created (RustFS cannot update it in place).
+**User passwords**: `passwordRef` points at an existing Secret in the
+release namespace. Alternatively set `password` inline and the chart
+creates `<release>-user-<name>` — but it then lives in the Helm release
+values; prefer `passwordRef` in production. Passwords are only applied when
+the user is first created (RustFS cannot update them in place).
+
+**Access keys**: each `accessKeys[]` entry issues an AK/SK pair for `user`;
+the operator writes the generated credentials to a Secret (default
+`<name>-credentials`). `passwordFromUser: <users[] entry>` reuses the
+password Secret this chart created for that user. The user's policies must
+allow `admin:CreateServiceAccount`, `admin:ListServiceAccounts` and
+`admin:RemoveServiceAccount`.
 
 ## Prerequisites
 

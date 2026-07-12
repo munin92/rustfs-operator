@@ -109,14 +109,17 @@ wait_ready() { # <kind> <name>
 wait_ready bucket app-data
 wait_ready policy app-data-rw
 wait_ready user ci-user
+wait_ready accesskey ci-key
+kubectl -n team-a get secret ci-key-credentials -o jsonpath='{.data.accessKey}' | grep -q . \
+  || { echo "FAIL: ci-key credentials secret missing accessKey" >&2; exit 1; }
 
 echo "== uninstall resources release; finalizers must clean up remote state"
 helm uninstall app-storage -n team-a --wait
 for _ in $(seq 1 60); do
-  [ -z "$(kubectl -n team-a get buckets,users,policies -o name 2>/dev/null)" ] && break
+  [ -z "$(kubectl -n team-a get buckets,users,policies,accesskeys -o name 2>/dev/null)" ] && break
   sleep 3
 done
-remaining=$(kubectl -n team-a get buckets,users,policies -o name 2>/dev/null)
+remaining=$(kubectl -n team-a get buckets,users,policies,accesskeys -o name 2>/dev/null)
 [ -z "$remaining" ] || { echo "FAIL: CRs not cleaned up: $remaining" >&2; exit 1; }
 
 echo "chart-e2e OK"

@@ -14,25 +14,25 @@ use crate::crd::{DeletionPolicy, ResourceStatus, User, UserSpec};
 use crate::error::{Error, Result};
 use crate::provider::RustFs;
 
-/// Make the RustFS user match the spec. `secret_key` is only used when the
-/// user does not exist yet; RustFS does not expose existing secret keys.
+/// Make the RustFS user match the spec. `password` is only used when the
+/// user does not exist yet; RustFS cannot update passwords in place.
 pub async fn ensure_user(
     fs: &dyn RustFs,
-    access_key: &str,
-    secret_key: &str,
+    username: &str,
+    password: &str,
     spec: &UserSpec,
 ) -> Result<()> {
-    let existing = fs.get_user(access_key).await?;
+    let existing = fs.get_user(username).await?;
     let (enabled_now, attached) = match &existing {
         Some(u) => (u.status == UserStatus::Enabled, u.policies()),
         None => {
-            fs.create_user(access_key, secret_key).await?;
+            fs.create_user(username, password).await?;
             (true, Vec::new())
         }
     };
 
     if enabled_now != spec.enabled {
-        fs.set_user_status(access_key, spec.enabled).await?;
+        fs.set_user_status(username, spec.enabled).await?;
     }
 
     let desired: BTreeSet<&str> = spec.policies.iter().map(String::as_str).collect();
@@ -40,14 +40,14 @@ pub async fn ensure_user(
     if desired != attached {
         // RustFS's set-policy endpoint replaces the whole attachment set.
         let policies: Vec<String> = desired.iter().map(|s| s.to_string()).collect();
-        fs.set_user_policies(access_key, &policies).await?;
+        fs.set_user_policies(username, &policies).await?;
     }
     Ok(())
 }
 
-pub async fn cleanup_user(fs: &dyn RustFs, access_key: &str, spec: &UserSpec) -> Result<()> {
+pub async fn cleanup_user(fs: &dyn RustFs, username: &str, spec: &UserSpec) -> Result<()> {
     match spec.deletion_policy {
-        DeletionPolicy::Delete => fs.delete_user(access_key).await,
+        DeletionPolicy::Delete => fs.delete_user(username).await,
         DeletionPolicy::Retain => Ok(()),
     }
 }
@@ -70,9 +70,10 @@ async fn apply(obj: Arc<User>, ctx: &Context) -> Result<Action> {
     let api: Api<User> = Api::namespaced(ctx.client.clone(), &ns);
 
     let result = async {
-        let secret_key = secret_key_value(&ctx.client, &ns, &obj.spec.secret_key_ref).await?;
+        let password =
+            secret_key_value(&ctx.client, &ns, &obj.spec.password_ref, "password").await?;
         let fs = provider_for(&ctx.client, &ns, &obj.spec.connection).await?;
-        ensure_user(&fs, obj.access_key(), &secret_key, &obj.spec).await
+        ensure_user(&fs, obj.username(), &password, &obj.spec).await
     }
     .await;
 
@@ -90,7 +91,7 @@ async fn cleanup(obj: Arc<User>, ctx: &Context) -> Result<Action> {
     }
     let ns = namespace_of(obj.as_ref())?;
     let fs = provider_for(&ctx.client, &ns, &obj.spec.connection).await?;
-    cleanup_user(&fs, obj.access_key(), &obj.spec).await?;
+    cleanup_user(&fs, obj.username(), &obj.spec).await?;
     Ok(Action::await_change())
 }
 
@@ -104,10 +105,10 @@ mod tests {
     fn spec(policies: &[&str], enabled: bool) -> UserSpec {
         UserSpec {
             connection: ConnectionRef::local("conn"),
-            access_key: None,
-            secret_key_ref: SecretKeyRef {
+            username: None,
+            password_ref: SecretKeyRef {
                 name: "creds".into(),
-                key: "secretKey".into(),
+                key: None,
             },
             policies: policies.iter().map(|s| s.to_string()).collect(),
             enabled,

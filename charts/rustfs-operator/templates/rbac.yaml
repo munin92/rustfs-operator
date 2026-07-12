@@ -7,20 +7,21 @@ metadata:
     {{- include "rustfs-operator.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["rustfs.com"]
-    resources: ["buckets", "users", "policies"]
+    resources: ["buckets", "users", "policies", "accesskeys"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: ["rustfs.com"]
-    resources: ["buckets/status", "users/status", "policies/status"]
+    resources: ["buckets/status", "users/status", "policies/status", "accesskeys/status"]
     verbs: ["get", "patch", "update"]
   - apiGroups: ["rustfs.com"]
     resources: ["clusterconnections"]
     verbs: ["get", "list", "watch"]
   {{- if .Values.rbac.clusterWideSecrets }}
-  # needed for connection.secretRef (per-namespace connection secrets);
-  # set rbac.clusterWideSecrets=false if you only use ClusterConnection
+  # read: connection.secretRef and User/AccessKey passwordRef;
+  # write: AccessKey credential Secrets. Scope down with
+  # rbac.clusterWideSecrets=false plus rbac.secretNamespaces.
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get"]
+    verbs: ["get", "create", "update", "patch"]
   {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -37,34 +38,37 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "rustfs-operator.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{- $root := . }}
+{{- range (concat (list .Release.Namespace) .Values.rbac.secretNamespaces | uniq) }}
 ---
-# Secrets in the operator's own namespace (ClusterConnection credentials)
-# are always readable, regardless of rbac.clusterWideSecrets.
+# Secret access in the operator's own namespace (ClusterConnection
+# credentials) and in each namespace listed in rbac.secretNamespaces.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: {{ include "rustfs-operator.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "rustfs-operator.fullname" $root }}
+  namespace: {{ . }}
   labels:
-    {{- include "rustfs-operator.labels" . | nindent 4 }}
+    {{- include "rustfs-operator.labels" $root | nindent 4 }}
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get"]
+    verbs: ["get", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: {{ include "rustfs-operator.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: {{ include "rustfs-operator.fullname" $root }}
+  namespace: {{ . }}
   labels:
-    {{- include "rustfs-operator.labels" . | nindent 4 }}
+    {{- include "rustfs-operator.labels" $root | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: {{ include "rustfs-operator.fullname" . }}
+  name: {{ include "rustfs-operator.fullname" $root }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "rustfs-operator.serviceAccountName" . }}
-    namespace: {{ .Release.Namespace }}
+    name: {{ include "rustfs-operator.serviceAccountName" $root }}
+    namespace: {{ $root.Release.Namespace }}
+{{- end }}
 {{- end }}

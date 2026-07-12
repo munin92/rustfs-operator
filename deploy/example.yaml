@@ -45,7 +45,7 @@ kind: Secret
 metadata:
   name: app-user-creds
 stringData:
-  secretKey: change-me-please
+  password: change-me-please
 ---
 apiVersion: rustfs.com/v1alpha1
 kind: Bucket
@@ -79,8 +79,23 @@ metadata:
 spec:
   connection:
     secretRef: rustfs-conn
-  secretKeyRef:
-    name: app-user-creds
-    key: secretKey
+  passwordRef:
+    name: app-user-creds   # key defaults to "password"
   policies: ["app-data-rw"]
   enabled: true
+---
+# An AK/SK credential pair for app-user. The operator issues it in RustFS
+# (authenticating as the user) and writes accessKey/secretKey/endpoint into
+# the Secret "app-key-credentials" (owner-referenced, GC'd with the CR).
+# NOTE: the user's policies must include admin:CreateServiceAccount,
+# admin:ListServiceAccounts and admin:RemoveServiceAccount.
+apiVersion: rustfs.com/v1alpha1
+kind: AccessKey
+metadata:
+  name: app-key
+spec:
+  connection:
+    secretRef: rustfs-conn
+  user: app-user
+  passwordRef:
+    name: app-user-creds

@@ -8,12 +8,23 @@ the [`rc-core`](https://crates.io/crates/rc-core) /
 
 ## CRDs (`rustfs.com/v1alpha1`)
 
-| Kind                | Short name | Scope      | Manages                                       |
-|---------------------|------------|------------|-----------------------------------------------|
-| `Bucket`            | `rfb`      | namespaced | bucket existence, versioning, hard quota      |
-| `User`              | `rfu`      | namespaced | IAM user, enabled/disabled, attached policies |
-| `Policy`            | `rfp`      | namespaced | IAM policy document (inline YAML/JSON)        |
-| `ClusterConnection` | `rfcc`     | cluster    | centrally managed RustFS server connection    |
+| Kind                | Short name | Scope      | Manages                                                |
+|---------------------|------------|------------|--------------------------------------------------------|
+| `Bucket`            | `rfb`      | namespaced | bucket existence, versioning, hard quota               |
+| `User`              | `rfu`      | namespaced | IAM identity (username + password), attached policies  |
+| `AccessKey`         | `rfak`     | namespaced | AK/SK credential pair for a User, written to a Secret  |
+| `Policy`            | `rfp`      | namespaced | IAM policy document (inline YAML/JSON)                 |
+| `ClusterConnection` | `rfcc`     | cluster    | centrally managed RustFS server connection             |
+
+The IAM model mirrors RustFS: a **User** is an identity (username/password)
+that policies attach to; applications authenticate with **AccessKeys**
+(a user can have many). The operator issues each AccessKey while
+authenticated *as the user* and writes the generated `accessKey`/
+`secretKey`/`endpoint` into a Secret in the CR's namespace, owner-referenced
+so it is garbage-collected with the CR. If that Secret is lost, the key is
+revoked and reissued. For a user to manage its own keys, its policies must
+allow `admin:CreateServiceAccount`, `admin:ListServiceAccounts` and
+`admin:RemoveServiceAccount`.
 
 Namespaced resources select a RustFS server via `spec.connection`, in one of
 two mutually exclusive ways:
@@ -89,8 +100,11 @@ build and attach a linux-amd64 binary.
 
 - **Reconcile loop**: finalizer-based; drift is re-checked every 5 minutes,
   errors retry after 15s and are reported in `.status.message`.
-- **User secret keys** are only applied at user creation; RustFS does not
-  expose secret keys, so rotating one requires deleting/recreating the user.
+- **User passwords** are only applied at user creation; RustFS cannot
+  update them in place. Rotate credentials by rotating AccessKeys instead
+  (delete/recreate the AccessKey CR).
+- **Policies in use cannot be deleted**: RustFS rejects deleting a policy
+  that is still attached; the Policy CR reports the error and retries.
 - **Policy attachment** uses RustFS's `set-user-or-group-policy` endpoint,
   which *replaces* the whole attachment set — `spec.policies` is therefore
   fully declarative.

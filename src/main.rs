@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use kube::CustomResourceExt;
 
-use rustfs_operator::crd::{Bucket, ClusterConnection, Policy, User};
+use rustfs_operator::crd::{AccessKey, Bucket, ClusterConnection, Policy, User};
 use rustfs_operator::reconcile;
 
 #[derive(Parser)]
@@ -27,6 +27,7 @@ async fn main() -> anyhow::Result<()> {
                 Bucket::crd(),
                 User::crd(),
                 Policy::crd(),
+                AccessKey::crd(),
                 ClusterConnection::crd(),
             ];
             let docs: Vec<String> = crds

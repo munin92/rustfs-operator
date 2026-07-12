@@ -13,4 +13,5 @@ crds:
   bucket: true
   user: true
   policy: true
+  accessKey: true
   clusterConnection: true

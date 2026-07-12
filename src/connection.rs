@@ -102,12 +102,13 @@ pub async fn provider_for(
     RustFsProvider::connect(info).await
 }
 
-/// Read a single key from a Secret (e.g. a managed user's secret key).
+/// Read a single key from a Secret (e.g. a managed user's password).
 pub async fn secret_key_value(
     client: &Client,
     namespace: &str,
     sref: &SecretKeyRef,
+    default_key: &str,
 ) -> Result<String> {
     let secret = get_secret(client, namespace, &sref.name).await?;
-    required(&secret, &sref.key, &sref.name)
+    required(&secret, sref.key_or(default_key), &sref.name)
 }

@@ -20,8 +20,8 @@ use testcontainers::runners::AsyncRunner;
 use testcontainers_modules::k3s::{K3s, KUBE_SECURE_PORT};
 
 use rustfs_operator::crd::{
-    Bucket, BucketSpec, ClusterConnection, ClusterConnectionSpec, ConnectionRef, DeletionPolicy,
-    Policy, PolicySpec, SecretKeyRef, User, UserSpec,
+    AccessKey, AccessKeySpec, Bucket, BucketSpec, ClusterConnection, ClusterConnectionSpec,
+    ConnectionRef, DeletionPolicy, Policy, PolicySpec, SecretKeyRef, User, UserSpec,
 };
 use rustfs_operator::provider::RustFs;
 use rustfs_operator::reconcile;
@@ -108,6 +108,7 @@ async fn operator_reconciles_crs_against_rustfs() {
         Bucket::crd(),
         User::crd(),
         Policy::crd(),
+        AccessKey::crd(),
         ClusterConnection::crd(),
     ] {
         crds.create(&PostParams::default(), &crd)
@@ -139,7 +140,7 @@ async fn operator_reconciles_crs_against_rustfs() {
     let mut user_creds = Secret::default();
     user_creds.metadata.name = Some("e2e-user-creds".into());
     user_creds.string_data =
-        Some([("secretKey".to_string(), "e2e-secret-key-123".to_string())].into());
+        Some([("password".to_string(), "e2e-password-123".to_string())].into());
     secrets
         .create(&PostParams::default(), &user_creds)
         .await
@@ -158,11 +159,23 @@ async fn operator_reconciles_crs_against_rustfs() {
                     policy_name: None,
                     document: json!({
                         "Version": "2012-10-17",
-                        "Statement": [{
-                            "Effect": "Allow",
-                            "Action": ["s3:GetObject"],
-                            "Resource": ["arn:aws:s3:::e2e-bucket/*"]
-                        }]
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Action": ["s3:GetObject"],
+                                "Resource": ["arn:aws:s3:::e2e-bucket/*"]
+                            },
+                            // required for the user to manage its own access keys
+                            {
+                                "Effect": "Allow",
+                                "Action": [
+                                    "admin:CreateServiceAccount",
+                                    "admin:ListServiceAccounts",
+                                    "admin:RemoveServiceAccount"
+                                ],
+                                "Resource": ["arn:aws:s3:::*"]
+                            }
+                        ]
                     }),
                     deletion_policy: DeletionPolicy::Delete,
                 },
@@ -178,10 +191,10 @@ async fn operator_reconciles_crs_against_rustfs() {
                 "e2e-user",
                 UserSpec {
                     connection: conn.clone(),
-                    access_key: None,
-                    secret_key_ref: SecretKeyRef {
+                    username: None,
+                    password_ref: SecretKeyRef {
                         name: "e2e-user-creds".into(),
-                        key: "secretKey".into(),
+                        key: None,
                     },
                     policies: vec!["e2e-policy".into()],
                     enabled: true,
@@ -263,6 +276,78 @@ async fn operator_reconciles_crs_against_rustfs() {
             .and_then(|p| p.status)
             .map(|s| s.ready)
             .unwrap_or(false)
+    })
+    .await;
+
+    // --- AccessKey: issue credentials for the user, written to a Secret ---
+    let access_keys: Api<AccessKey> = Api::namespaced(client.clone(), NS);
+    access_keys
+        .create(
+            &PostParams::default(),
+            &AccessKey::new(
+                "e2e-ak",
+                AccessKeySpec {
+                    connection: conn.clone(),
+                    user: "e2e-user".into(),
+                    password_ref: SecretKeyRef {
+                        name: "e2e-user-creds".into(),
+                        key: None,
+                    },
+                    access_key: None,
+                    description: Some("e2e".into()),
+                    policy: None,
+                    target_secret_name: None,
+                    deletion_policy: DeletionPolicy::Delete,
+                },
+            ),
+        )
+        .await
+        .expect("create AccessKey CR");
+    eventually("AccessKey CR is ready", 60, || async {
+        access_keys
+            .get("e2e-ak")
+            .await
+            .ok()
+            .and_then(|k| k.status)
+            .map(|s| s.ready)
+            .unwrap_or(false)
+    })
+    .await;
+
+    // credentials Secret exists and the key is registered in RustFS
+    let creds = secrets
+        .get("e2e-ak-credentials")
+        .await
+        .expect("credentials secret");
+    let get_key = |k: &str| {
+        String::from_utf8(creds.data.as_ref().unwrap().get(k).unwrap().0.clone()).unwrap()
+    };
+    let issued_ak = get_key("accessKey");
+    assert_eq!(get_key("endpoint"), endpoint);
+    assert!(!get_key("secretKey").is_empty());
+    assert!(
+        fs.get_access_key("e2e-user", "e2e-password-123", &issued_ak)
+            .await
+            .unwrap()
+            .is_some(),
+        "issued key must exist in RustFS"
+    );
+
+    // deleting the CR revokes the key; the Secret is GC'd via ownerReference
+    access_keys
+        .delete("e2e-ak", &DeleteParams::default())
+        .await
+        .expect("delete AccessKey CR");
+    eventually("access key revoked in RustFS", 60, || async {
+        matches!(
+            fs.get_access_key("e2e-user", "e2e-password-123", &issued_ak)
+                .await,
+            Ok(None)
+        )
+    })
+    .await;
+    eventually("credentials secret garbage-collected", 60, || async {
+        secrets.get("e2e-ak-credentials").await.is_err()
     })
     .await;
 

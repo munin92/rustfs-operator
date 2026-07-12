@@ -1,5 +1,6 @@
 //! Controllers for Bucket, User and Policy resources.
 
+pub mod access_key;
 pub mod bucket;
 pub mod policy;
 pub mod user;
@@ -16,7 +17,7 @@ use kube::{Api, Client, Resource, ResourceExt};
 use serde::de::DeserializeOwned;
 use tracing::{info, warn};
 
-use crate::crd::{Bucket, Policy, ResourceStatus, User};
+use crate::crd::{AccessKey, Bucket, Policy, User};
 use crate::error::{Error, Result};
 
 /// How often a successfully reconciled resource is re-checked for drift.
@@ -32,9 +33,10 @@ pub struct Context {
 }
 
 /// Patch `.status` on a resource (best effort; reconcile result wins).
-pub async fn patch_status<K>(api: &Api<K>, name: &str, status: &ResourceStatus)
+pub async fn patch_status<K, S>(api: &Api<K>, name: &str, status: &S)
 where
     K: Resource + Clone + DeserializeOwned + Debug,
+    S: serde::Serialize,
 {
     let patch = serde_json::json!({ "status": status });
     if let Err(e) = api
@@ -94,14 +96,26 @@ pub async fn run_all(client: Client) -> Result<()> {
         watcher::Config::default(),
     )
     .shutdown_on_signal()
-    .run(policy::reconcile, error_policy, ctx)
+    .run(policy::reconcile, error_policy, ctx.clone())
     .for_each(|res| async move {
         if let Ok((obj, _)) = res {
             info!(kind = "Policy", name = %obj.name, "reconciled");
         }
     });
 
-    tokio::join!(buckets, users, policies);
+    let access_keys = Controller::new(
+        Api::<AccessKey>::all(client.clone()),
+        watcher::Config::default(),
+    )
+    .shutdown_on_signal()
+    .run(access_key::reconcile, error_policy, ctx)
+    .for_each(|res| async move {
+        if let Ok((obj, _)) = res {
+            info!(kind = "AccessKey", name = %obj.name, "reconciled");
+        }
+    });
+
+    tokio::join!(buckets, users, policies, access_keys);
     Ok(())
 }
 

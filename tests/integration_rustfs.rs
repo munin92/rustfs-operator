@@ -67,6 +67,68 @@ async fn provider_manages_buckets_policies_and_users() {
     let user = fs.get_user("it-user").await.unwrap().unwrap();
     assert!(user.policies().contains(&"it-policy".to_string()));
 
+    // --- access keys (service accounts): issued as the user, usable for S3 ---
+    let allow_all = json!({
+        "Version": "2012-10-17",
+        "Statement": [
+            {"Effect": "Allow", "Action": ["s3:*"], "Resource": ["arn:aws:s3:::*"]},
+            {"Effect": "Allow", "Action": ["admin:CreateServiceAccount", "admin:ListServiceAccounts", "admin:RemoveServiceAccount"], "Resource": ["arn:aws:s3:::*"]}
+        ]
+    });
+    fs.put_policy("it-allow-all", &allow_all.to_string())
+        .await
+        .unwrap();
+    fs.set_user_policies("it-user", &["it-allow-all".into()])
+        .await
+        .unwrap();
+    let (sa_ak, sa_sk) = (
+        "ITSAKEY1234567890ABC",
+        "it-sa-secret-key-12345678901234567890",
+    );
+    assert!(
+        fs.get_access_key("it-user", "it-secret-key-123", sa_ak)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    fs.create_access_key(
+        "it-user",
+        "it-secret-key-123",
+        sa_ak,
+        sa_sk,
+        Some("integration".into()),
+        None,
+    )
+    .await
+    .unwrap();
+    assert!(
+        fs.get_access_key("it-user", "it-secret-key-123", sa_ak)
+            .await
+            .unwrap()
+            .is_some()
+    );
+    // the issued credentials authenticate and authorize real S3 calls
+    let sa_provider = rustfs_operator::provider::RustFsProvider::connect(
+        rustfs_operator::provider::ConnectionInfo {
+            endpoint: endpoint.clone(),
+            access_key: sa_ak.into(),
+            secret_key: sa_sk.into(),
+            region: "us-east-1".into(),
+            insecure: false,
+        },
+    )
+    .await
+    .unwrap();
+    assert!(sa_provider.bucket_exists("it-bucket").await.unwrap());
+    fs.delete_access_key("it-user", "it-secret-key-123", sa_ak)
+        .await
+        .unwrap();
+    assert!(
+        fs.get_access_key("it-user", "it-secret-key-123", sa_ak)
+            .await
+            .unwrap()
+            .is_none()
+    );
     fs.set_user_status("it-user", false).await.unwrap();
 
     // replace semantics: setting a different set drops the old attachment
@@ -82,6 +144,8 @@ async fn provider_manages_buckets_policies_and_users() {
         .unwrap();
     let user = fs.get_user("it-user").await.unwrap().unwrap();
     assert_eq!(user.policies(), vec!["it-policy-2".to_string()]);
+    // no longer attached to it-user, so deletable now
+    fs.delete_policy("it-allow-all").await.unwrap();
 
     // --- cleanup, exercising delete paths ---
     fs.delete_user("it-user").await.unwrap();

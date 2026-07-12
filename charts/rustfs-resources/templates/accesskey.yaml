@@ -1,0 +1,52 @@
+{{- $seen := dict }}
+{{- range .Values.accessKeys }}
+{{- $name := include "rustfs-resources.entryName" (dict "entry" . "seen" $seen "kind" "accessKeys") }}
+{{- $id := printf "accessKeys[%s]" $name }}
+{{- $user := .user | default "" }}
+{{- if eq $user "" }}
+{{- fail (printf "%s: 'user' (the owning RustFS username) is required" $id) }}
+{{- end }}
+{{- $fromUser := .passwordFromUser | default "" }}
+{{- $ref := .passwordRef | default dict }}
+{{- $refName := $ref.name | default "" }}
+{{- if and (ne $fromUser "") (ne $refName "") }}
+{{- fail (printf "%s: set either passwordRef or passwordFromUser, not both" $id) }}
+{{- end }}
+{{- if and (eq $fromUser "") (eq $refName "") }}
+{{- fail (printf "%s: a password source is required; set passwordRef or passwordFromUser (a users[] entry with inline password)" $id) }}
+{{- end }}
+---
+apiVersion: rustfs.com/v1alpha1
+kind: AccessKey
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "rustfs-resources.labels" $ | nindent 4 }}
+spec:
+  {{- include "rustfs-resources.connection" (dict "root" $ "entry" . "id" $id) | nindent 2 }}
+  user: {{ $user | quote }}
+  passwordRef:
+    {{- if ne $fromUser "" }}
+    # the Secret this chart creates for the referenced users[] entry
+    name: {{ printf "%s-user-%s" $.Release.Name $fromUser }}
+    {{- else }}
+    name: {{ $refName }}
+    {{- with $ref.key }}
+    key: {{ . }}
+    {{- end }}
+    {{- end }}
+  {{- with .accessKey }}
+  accessKey: {{ . | quote }}
+  {{- end }}
+  {{- with .description }}
+  description: {{ . | quote }}
+  {{- end }}
+  {{- with .policy }}
+  policy:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .targetSecretName }}
+  targetSecretName: {{ . | quote }}
+  {{- end }}
+  {{- include "rustfs-resources.deletionPolicy" (dict "entry" . "id" $id) | nindent 2 }}
+{{- end }}

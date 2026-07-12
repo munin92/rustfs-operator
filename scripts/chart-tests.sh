@@ -9,6 +9,11 @@ fail() { echo "FAIL: $*" >&2; exit 1; }
 echo "== helm lint (all charts)"
 helm lint charts/* >/dev/null
 
+echo "== main chart: rbac.secretNamespaces renders per-namespace Roles"
+render=$(helm template rel charts/rustfs-operator --namespace op-ns --set rbac.clusterWideSecrets=false --set-json 'rbac.secretNamespaces=["data","team-a"]')
+[ "$(grep -c '^kind: Role$' <<<"$render")" = 3 ] || fail "expected Roles for op-ns + 2 namespaces"
+grep -q 'namespace: data' <<<"$render" || fail "Role for namespace data missing"
+
 echo "== main chart: default render has no ClusterConnection/Secret"
 render=$(helm template rel charts/rustfs-operator --namespace op-ns)
 grep -q 'kind: ClusterConnection' <<<"$render" && fail "unexpected ClusterConnection in default render"
@@ -27,10 +32,10 @@ grep -q 'allowedNamespaces:' <<<"$render" || fail "allowedNamespaces not rendere
 
 echo "== crds chart: defaults, keep policy, toggles"
 render=$(helm template crds charts/rustfs-operator-crds)
-[ "$(grep -c 'kind: CustomResourceDefinition' <<<"$render")" = 4 ] || fail "expected 4 CRDs"
-[ "$(grep -c 'helm.sh/resource-policy: keep' <<<"$render")" = 4 ] || fail "expected keep policy on all CRDs"
+[ "$(grep -c 'kind: CustomResourceDefinition' <<<"$render")" = 5 ] || fail "expected 5 CRDs"
+[ "$(grep -c 'helm.sh/resource-policy: keep' <<<"$render")" = 5 ] || fail "expected keep policy on all CRDs"
 render=$(helm template crds charts/rustfs-operator-crds --set keep=false --set crds.user=false)
-[ "$(grep -c 'kind: CustomResourceDefinition' <<<"$render")" = 3 ] || fail "crds.user=false should drop one CRD"
+[ "$(grep -c 'kind: CustomResourceDefinition' <<<"$render")" = 4 ] || fail "crds.user=false should drop one CRD"
 grep -q 'resource-policy' <<<"$render" && fail "keep=false should drop the resource-policy annotation"
 
 echo "== resources chart: rendering"
@@ -39,6 +44,9 @@ grep -q 'kind: Bucket' <<<"$render" || fail "no Bucket rendered"
 grep -q 'quotaBytes: 10485760' <<<"$render" || fail "quotaBytes wrong or missing"
 grep -q 'clusterRef: "prod"' <<<"$render" || fail "default connection not applied"
 grep -q 'name: rel-user-ci-user' <<<"$render" || fail "chart-created user secret not rendered"
+grep -q 'password: "chart-e2e-password-123"' <<<"$render" || fail "user password not in chart secret"
+grep -q 'kind: AccessKey' <<<"$render" || fail "no AccessKey rendered"
+grep -qE 'name: rel-user-ci-user' <<<"$render" || fail "passwordFromUser not resolved"
 render=$(helm template rel charts/rustfs-resources --set-json 'buckets=[{"name":"b","connection":{"secretRef":"local"}}]')
 grep -q 'secretRef: "local"' <<<"$render" || fail "per-entry connection override not applied"
 grep -q 'versioning' <<<"$render" && fail "omitted versioning must not render"
@@ -63,7 +71,9 @@ expect_fail $R 'buckets=[{"name":"a"}]' "no connection"
 expect_fail $R 'buckets=[{"name":"a","connection":{"clusterRef":"p","secretRef":"s"}}]' "mutually exclusive"
 expect_fail $R 'buckets=[{"name":"a","connection":{"clusterRef":"p"},"deletionPolicy":"Del"}]' "deletionPolicy must be"
 expect_fail $R 'policies=[{"name":"a","connection":{"clusterRef":"p"}}]' "'document' is required"
-expect_fail $R 'users=[{"name":"a","connection":{"clusterRef":"p"}}]' "secret key source is required"
-expect_fail $R 'users=[{"name":"a","connection":{"clusterRef":"p"},"secretKey":"x","secretKeyRef":{"name":"y"}}]' "not both"
+expect_fail $R 'users=[{"name":"a","connection":{"clusterRef":"p"}}]' "password source is required"
+expect_fail $R 'users=[{"name":"a","connection":{"clusterRef":"p"},"password":"x","passwordRef":{"name":"y"}}]' "not both"
+expect_fail $R 'accessKeys=[{"name":"a","connection":{"clusterRef":"p"},"passwordFromUser":"u"}]' "'user' (the owning RustFS username) is required"
+expect_fail $R 'accessKeys=[{"name":"a","user":"u","connection":{"clusterRef":"p"}}]' "password source is required"
 
 echo "chart-tests OK"

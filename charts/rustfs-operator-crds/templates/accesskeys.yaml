@@ -1,8 +1,8 @@
-{{- if .Values.crds.user }}
+{{- if .Values.crds.accessKey }}
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
-  name: users.rustfs.com
+  name: accesskeys.rustfs.com
   {{- if or .Values.keep .Values.annotations }}
   annotations:
     {{- if .Values.keep }}
@@ -23,31 +23,41 @@ spec:
   group: rustfs.com
   names:
     categories: []
-    kind: User
-    plural: users
+    kind: AccessKey
+    plural: accesskeys
     shortNames:
-    - rfu
-    singular: user
+    - rfak
+    singular: accesskey
   scope: Namespaced
   versions:
   - additionalPrinterColumns:
     - jsonPath: .status.ready
       name: Ready
       type: boolean
+    - jsonPath: .status.accessKey
+      name: AccessKey
+      type: string
     - jsonPath: .status.message
       name: Message
       type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Auto-generated derived type for UserSpec via `CustomResource`
+        description: Auto-generated derived type for AccessKeySpec via `CustomResource`
         properties:
           spec:
             description: |-
-              An IAM user (identity) in RustFS: a username with a password. Policies
-              attach to the user; applications should authenticate with [`AccessKey`]s
-              issued for the user rather than the password itself.
+              An access key (AK/SK credential pair, a RustFS "service account") owned
+              by a [`User`]. A user can have many. The operator authenticates to
+              RustFS *as the user* to issue the key (the admin API only mints keys for
+              the calling identity), generates the credentials, and writes them to a
+              Secret in the CR's namespace, owner-referenced so it is garbage-collected
+              with the CR.
             properties:
+              accessKey:
+                description: Explicit access key id; generated when omitted.
+                nullable: true
+                type: string
               connection:
                 description: |-
                   Reference to a RustFS server. Exactly one of `secretRef` / `clusterRef`
@@ -71,14 +81,12 @@ spec:
                 - Delete
                 - Retain
                 type: string
-              enabled:
-                default: true
-                description: Whether the user is enabled.
-                type: boolean
+              description:
+                description: Optional description stored on the service account.
+                nullable: true
+                type: string
               passwordRef:
-                description: |-
-                  Secret holding the user's password (key defaults to `password`).
-                  Only applied when the user is first created; RustFS cannot update it.
+                description: Secret holding that user's password (key defaults to `password`).
                 properties:
                   key:
                     description: Key within the Secret; each consumer documents its default.
@@ -90,43 +98,49 @@ spec:
                 required:
                 - name
                 type: object
-              policies:
-                default: []
+              policy:
                 description: |-
-                  Policies attached to the user; managed declaratively (extra
-                  attachments are detached).
-                items:
-                  type: string
-                type: array
-              username:
-                description: Username in RustFS; defaults to the CR name.
+                  Optional inline policy restricting what this key may do (subset of
+                  the user's permissions), written as YAML/JSON.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              targetSecretName:
+                description: |-
+                  Name of the Secret the operator writes the credentials to
+                  (keys `accessKey`, `secretKey`, `endpoint`); defaults to
+                  `<cr-name>-credentials`.
                 nullable: true
+                type: string
+              user:
+                description: Username of the owning RustFS user.
                 type: string
             required:
             - connection
             - passwordRef
+            - user
             type: object
           status:
-            description: Shared status for all RustFS resources.
+            description: Status for AccessKey resources.
             nullable: true
             properties:
+              accessKey:
+                description: The issued access key id.
+                nullable: true
+                type: string
               message:
-                description: Human-readable state or last error.
                 nullable: true
                 type: string
               observedGeneration:
-                description: Generation last acted upon.
                 format: int64
                 nullable: true
                 type: integer
               ready:
                 default: false
-                description: True once the remote resource matches the spec.
                 type: boolean
             type: object
         required:
         - spec
-        title: User
+        title: AccessKey
         type: object
     served: true
     storage: true

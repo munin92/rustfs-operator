@@ -22,6 +22,7 @@ VALUES_KEYS = {
     "buckets": "bucket",
     "users": "user",
     "policies": "policy",
+    "accesskeys": "accessKey",
     "clusterconnections": "clusterConnection",
 }
 

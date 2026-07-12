@@ -16,12 +16,15 @@ serviceAccount:
 
 rbac:
   create: true
-  # Grants cluster-wide Secret read. Needed for `connection.secretRef`
-  # (per-namespace connection secrets) and for `User.spec.secretKeyRef`
-  # Secrets in application namespaces. Set to false for the strictest setup:
-  # everything uses `connection.clusterRef` and User resources live in the
-  # operator's namespace; the operator then only reads Secrets there.
+  # Grants cluster-wide Secret access (read for connection.secretRef and
+  # User/AccessKey passwordRef; write for AccessKey credential Secrets).
+  # Set to false for least privilege and list the application namespaces
+  # that hold RustFS resources in secretNamespaces instead.
   clusterWideSecrets: true
+  # Namespaces (besides the release namespace, always included) where the
+  # operator gets a namespaced Role for Secret access. Only relevant when
+  # clusterWideSecrets is false.
+  secretNamespaces: []
 
 # Optionally declare ClusterConnection resources (and their admin
 # credentials Secrets) inline. Off by default; see the chart README.

@@ -4,7 +4,9 @@
 //! `ObjectStore` traits so unit tests can mock exactly the surface they use.
 
 use async_trait::async_trait;
-use rc_core::admin::{AdminApi, Policy, PolicyEntity, User, UserStatus};
+use rc_core::admin::{
+    AdminApi, CreateServiceAccountRequest, Policy, PolicyEntity, ServiceAccount, User, UserStatus,
+};
 use rc_core::traits::ObjectStore;
 use rc_core::{Alias, Error as RcError};
 use rc_s3::{AdminClient, S3Client};
@@ -69,20 +71,58 @@ pub trait RustFs: Send + Sync {
     async fn get_policy(&self, name: &str) -> Result<Option<Policy>>;
     async fn put_policy(&self, name: &str, document: &str) -> Result<()>;
     async fn delete_policy(&self, name: &str) -> Result<()>;
+
+    // Access keys (service accounts). RustFS only mints/manages service
+    // accounts for the calling identity, so these authenticate as the
+    // owning user (username + password) rather than as the admin.
+    /// The S3 endpoint this provider talks to (stored in credential Secrets).
+    fn endpoint(&self) -> String;
+    async fn get_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+    ) -> Result<Option<ServiceAccount>>;
+    #[allow(clippy::too_many_arguments)]
+    async fn create_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+        secret_key: &str,
+        description: Option<String>,
+        policy: Option<String>,
+    ) -> Result<()>;
+    async fn delete_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+    ) -> Result<()>;
 }
 
 /// Real implementation backed by `rc-s3`.
 pub struct RustFsProvider {
     s3: S3Client,
     admin: AdminClient,
+    info: ConnectionInfo,
 }
 
 impl RustFsProvider {
     pub async fn connect(info: ConnectionInfo) -> Result<Self> {
-        let alias = info.into_alias();
+        let alias = info.clone().into_alias();
         let admin = AdminClient::new(&alias)?;
         let s3 = S3Client::new(alias).await?;
-        Ok(Self { s3, admin })
+        Ok(Self { s3, admin, info })
+    }
+
+    /// Admin client authenticated as a regular user (for service-account
+    /// operations, which RustFS scopes to the calling identity).
+    fn client_as(&self, username: &str, password: &str) -> Result<AdminClient> {
+        let mut info = self.info.clone();
+        info.access_key = username.to_string();
+        info.secret_key = password.to_string();
+        Ok(AdminClient::new(&info.into_alias())?)
     }
 }
 
@@ -192,6 +232,66 @@ impl RustFs for RustFsProvider {
         match self.admin.delete_policy(name).await {
             Ok(()) => Ok(()),
             Err(e) => absent(e),
+        }
+    }
+
+    fn endpoint(&self) -> String {
+        self.info.endpoint.clone()
+    }
+
+    async fn get_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+    ) -> Result<Option<ServiceAccount>> {
+        let client = self.client_as(username, password)?;
+        optional(client.get_service_account(access_key).await)
+    }
+
+    async fn create_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+        secret_key: &str,
+        description: Option<String>,
+        policy: Option<String>,
+    ) -> Result<()> {
+        let client = self.client_as(username, password)?;
+        client
+            .create_service_account(CreateServiceAccountRequest {
+                policy,
+                expiry: None,
+                name: Some(access_key.to_string()),
+                description,
+                access_key: access_key.to_string(),
+                secret_key: secret_key.to_string(),
+            })
+            .await?;
+        Ok(())
+    }
+
+    async fn delete_access_key(
+        &self,
+        username: &str,
+        password: &str,
+        access_key: &str,
+    ) -> Result<()> {
+        // Try as admin first (covers keys whose owner was already deleted),
+        // fall back to the owning user.
+        match self.admin.delete_service_account(access_key).await {
+            Ok(()) => Ok(()),
+            Err(admin_err) => {
+                if absent(admin_err).is_ok() {
+                    return Ok(());
+                }
+                let client = self.client_as(username, password)?;
+                match client.delete_service_account(access_key).await {
+                    Ok(()) => Ok(()),
+                    Err(e) => absent(e),
+                }
+            }
         }
     }
 }

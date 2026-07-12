@@ -173,20 +173,24 @@ impl Bucket {
 pub struct SecretKeyRef {
     /// Secret name.
     pub name: String,
-    /// Key within the Secret; defaults to `secretKey`.
-    #[serde(default = "default_secret_key_key")]
-    pub key: String,
+    /// Key within the Secret; each consumer documents its default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key: Option<String>,
 }
 
-fn default_secret_key_key() -> String {
-    "secretKey".into()
+impl SecretKeyRef {
+    pub fn key_or<'a>(&'a self, default: &'a str) -> &'a str {
+        self.key.as_deref().unwrap_or(default)
+    }
 }
 
 fn default_true() -> bool {
     true
 }
 
-/// An IAM user in RustFS.
+/// An IAM user (identity) in RustFS: a username with a password. Policies
+/// attach to the user; applications should authenticate with [`AccessKey`]s
+/// issued for the user rather than the password itself.
 #[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
 #[kube(
     group = "rustfs.com",
@@ -201,11 +205,12 @@ fn default_true() -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct UserSpec {
     pub connection: ConnectionRef,
-    /// Access key (username) in RustFS; defaults to the CR name.
+    /// Username in RustFS; defaults to the CR name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub access_key: Option<String>,
-    /// Secret holding the user's secret key (used at creation time).
-    pub secret_key_ref: SecretKeyRef,
+    pub username: Option<String>,
+    /// Secret holding the user's password (key defaults to `password`).
+    /// Only applied when the user is first created; RustFS cannot update it.
+    pub password_ref: SecretKeyRef,
     /// Policies attached to the user; managed declaratively (extra
     /// attachments are detached).
     #[serde(default)]
@@ -218,12 +223,84 @@ pub struct UserSpec {
 }
 
 impl User {
-    /// Effective access key in RustFS.
-    pub fn access_key(&self) -> &str {
+    /// Effective username in RustFS.
+    pub fn username(&self) -> &str {
         self.spec
-            .access_key
+            .username
             .as_deref()
             .unwrap_or_else(|| self.metadata.name.as_deref().unwrap_or_default())
+    }
+}
+
+/// An access key (AK/SK credential pair, a RustFS "service account") owned
+/// by a [`User`]. A user can have many. The operator authenticates to
+/// RustFS *as the user* to issue the key (the admin API only mints keys for
+/// the calling identity), generates the credentials, and writes them to a
+/// Secret in the CR's namespace, owner-referenced so it is garbage-collected
+/// with the CR.
+#[derive(CustomResource, Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[kube(
+    group = "rustfs.com",
+    version = "v1alpha1",
+    kind = "AccessKey",
+    namespaced,
+    status = "AccessKeyStatus",
+    shortname = "rfak",
+    printcolumn = r#"{"name":"Ready","type":"boolean","jsonPath":".status.ready"}"#,
+    printcolumn = r#"{"name":"AccessKey","type":"string","jsonPath":".status.accessKey"}"#,
+    printcolumn = r#"{"name":"Message","type":"string","jsonPath":".status.message"}"#
+)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessKeySpec {
+    pub connection: ConnectionRef,
+    /// Username of the owning RustFS user.
+    pub user: String,
+    /// Secret holding that user's password (key defaults to `password`).
+    pub password_ref: SecretKeyRef,
+    /// Explicit access key id; generated when omitted.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_key: Option<String>,
+    /// Optional description stored on the service account.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Optional inline policy restricting what this key may do (subset of
+    /// the user's permissions), written as YAML/JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schemars(schema_with = "policy_document_schema")]
+    pub policy: Option<serde_json::Value>,
+    /// Name of the Secret the operator writes the credentials to
+    /// (keys `accessKey`, `secretKey`, `endpoint`); defaults to
+    /// `<cr-name>-credentials`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_secret_name: Option<String>,
+    #[serde(default)]
+    pub deletion_policy: DeletionPolicy,
+}
+
+/// Status for AccessKey resources.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AccessKeyStatus {
+    #[serde(default)]
+    pub ready: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub observed_generation: Option<i64>,
+    /// The issued access key id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub access_key: Option<String>,
+}
+
+impl AccessKey {
+    /// Effective name of the Secret receiving the credentials.
+    pub fn target_secret_name(&self) -> String {
+        self.spec.target_secret_name.clone().unwrap_or_else(|| {
+            format!(
+                "{}-credentials",
+                self.metadata.name.as_deref().unwrap_or_default()
+            )
+        })
     }
 }
 

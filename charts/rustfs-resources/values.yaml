@@ -31,15 +31,32 @@ policies: []
 users: []
 # users:
 #   - name: app-user
-#     accessKey: ""               # optional; defaults to the CR name
+#     username: ""                # optional; defaults to the CR name
 #     # EITHER reference an existing Secret in the release namespace ...
-#     secretKeyRef:
+#     passwordRef:
 #       name: app-user-creds
-#       key: secretKey            # optional, defaults to secretKey
-#     # ... OR let the chart create one (WARNING: the secret key then lives
-#     # in the Helm release values; prefer secretKeyRef in production):
-#     secretKey: ""
+#       key: password             # optional, defaults to password
+#     # ... OR let the chart create one (WARNING: the password then lives
+#     # in the Helm release values; prefer passwordRef in production):
+#     password: ""
+#     # to issue access keys for this user, its policies must include the
+#     # admin:CreateServiceAccount / ListServiceAccounts / RemoveServiceAccount actions
 #     policies: ["app-data-rw"]
 #     enabled: true               # optional
+#     deletionPolicy: Delete
+#     connection: {}
+
+accessKeys: []
+# accessKeys:
+#   - name: app-key               # AK/SK pair for a user; credentials are
+#     user: app-user              # written by the operator to a Secret
+#     # password source for the owning user, EITHER:
+#     passwordFromUser: app-user  # a users[] entry above with inline password
+#     # OR an explicit Secret reference:
+#     # passwordRef: {name: app-user-creds, key: password}
+#     accessKey: ""               # optional; generated when empty
+#     description: ""
+#     policy: {}                  # optional inline policy restricting the key
+#     targetSecretName: ""        # default "<name>-credentials"
 #     deletionPolicy: Delete
 #     connection: {}

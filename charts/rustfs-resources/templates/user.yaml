@@ -2,14 +2,14 @@
 {{- range .Values.users }}
 {{- $name := include "rustfs-resources.entryName" (dict "entry" . "seen" $seen "kind" "users") }}
 {{- $id := printf "users[%s]" $name }}
-{{- $inlineKey := .secretKey | default "" }}
-{{- $ref := .secretKeyRef | default dict }}
+{{- $inlinePassword := .password | default "" }}
+{{- $ref := .passwordRef | default dict }}
 {{- $refName := $ref.name | default "" }}
-{{- if and (ne $inlineKey "") (ne $refName "") }}
-{{- fail (printf "%s: set either secretKeyRef or inline secretKey, not both" $id) }}
+{{- if and (ne $inlinePassword "") (ne $refName "") }}
+{{- fail (printf "%s: set either passwordRef or inline password, not both" $id) }}
 {{- end }}
-{{- if and (eq $inlineKey "") (eq $refName "") }}
-{{- fail (printf "%s: a secret key source is required; set secretKeyRef (existing Secret) or secretKey (chart-created)" $id) }}
+{{- if and (eq $inlinePassword "") (eq $refName "") }}
+{{- fail (printf "%s: a password source is required; set passwordRef (existing Secret) or password (chart-created)" $id) }}
 {{- end }}
 {{- $secretName := ternary $refName (printf "%s-user-%s" $.Release.Name $name) (ne $refName "") }}
 ---
@@ -21,17 +21,15 @@ metadata:
     {{- include "rustfs-resources.labels" $ | nindent 4 }}
 spec:
   {{- include "rustfs-resources.connection" (dict "root" $ "entry" . "id" $id) | nindent 2 }}
-  {{- with .accessKey }}
-  accessKey: {{ . | quote }}
+  {{- with .username }}
+  username: {{ . | quote }}
   {{- end }}
-  secretKeyRef:
+  passwordRef:
     name: {{ $secretName }}
     {{- if ne $refName "" }}
     {{- with $ref.key }}
     key: {{ . }}
     {{- end }}
-    {{- else }}
-    key: secretKey
     {{- end }}
   {{- with .policies }}
   policies:
@@ -52,6 +50,6 @@ metadata:
     {{- include "rustfs-resources.labels" $ | nindent 4 }}
 type: Opaque
 stringData:
-  secretKey: {{ $inlineKey | quote }}
+  password: {{ $inlinePassword | quote }}
 {{- end }}
 {{- end }}

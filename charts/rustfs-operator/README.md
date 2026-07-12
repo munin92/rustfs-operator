@@ -22,6 +22,7 @@ helm install rustfs-operator rustfs-operator/rustfs-operator \
 | `serviceAccount.create` | `true` | create the ServiceAccount |
 | `rbac.create` | `true` | create ClusterRole/Role and bindings |
 | `rbac.clusterWideSecrets` | `true` | see [RBAC](#rbac) |
+| `rbac.secretNamespaces` | `[]` | namespaces granted Secret access via Roles when `clusterWideSecrets` is off |
 | `clusterConnections` | `[]` | bootstrap ClusterConnection resources, see below |
 
 ## Bootstrapping ClusterConnections
@@ -61,9 +62,9 @@ clusterConnections:
 
 ## RBAC
 
-`rbac.clusterWideSecrets: true` (default) lets the operator read Secrets in
-all namespaces, which `connection.secretRef` and per-namespace
-`User.spec.secretKeyRef` need. When you use **only** `ClusterConnection`
-(and keep `User` resources in the operator's namespace), set it to `false`
-for least privilege — the operator then reads Secrets only in its own
-namespace via a namespaced Role.
+`rbac.clusterWideSecrets: true` (default) lets the operator read and write
+Secrets in all namespaces (read: `connection.secretRef` and
+`User`/`AccessKey` `passwordRef`; write: `AccessKey` credential Secrets).
+For least privilege set it to `false` and list the application namespaces
+that hold RustFS resources in `rbac.secretNamespaces` — the operator then
+gets a namespaced Role in exactly those namespaces (plus its own).

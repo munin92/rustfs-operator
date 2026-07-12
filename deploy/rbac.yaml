@@ -10,19 +10,19 @@ metadata:
   name: rustfs-operator
 rules:
   - apiGroups: ["rustfs.com"]
-    resources: ["buckets", "users", "policies"]
+    resources: ["buckets", "users", "policies", "accesskeys"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: ["rustfs.com"]
-    resources: ["buckets/status", "users/status", "policies/status"]
+    resources: ["buckets/status", "users/status", "policies/status", "accesskeys/status"]
     verbs: ["get", "patch", "update"]
   - apiGroups: ["rustfs.com"]
     resources: ["clusterconnections"]
     verbs: ["get", "list", "watch"]
-  # connection and user-credential secrets (can be scoped to the operator
-  # namespace with a Role if only ClusterConnection is used; see Helm chart)
+  # read connection/password secrets, write AccessKey credential secrets
+  # (can be scoped per namespace; see the Helm chart's rbac.secretNamespaces)
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get"]
+    verbs: ["get", "create", "update", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
