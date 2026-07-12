@@ -1,0 +1,45 @@
+# Default connection for every resource that doesn't set its own.
+# Exactly one of clusterRef/secretRef must be set (here or per entry).
+connection:
+  clusterRef: ""      # name of a cluster-scoped ClusterConnection
+  secretRef: ""       # name of a connection Secret in the release namespace
+
+# All resources are created in the release namespace.
+
+buckets: []
+# buckets:
+#   - name: app-data              # CR name; also the bucket name unless bucketName is set
+#     bucketName: ""              # optional
+#     versioning: true            # optional; omit = unmanaged
+#     quotaBytes: 10737418240     # optional; omit = unmanaged
+#     deletionPolicy: Retain      # optional: Delete (operator default) | Retain
+#     connection: {}              # optional per-resource override
+
+policies: []
+# policies:
+#   - name: app-data-rw
+#     policyName: ""              # optional; defaults to the CR name
+#     document:                   # required, inline IAM policy
+#       Version: "2012-10-17"
+#       Statement:
+#         - Effect: Allow
+#           Action: ["s3:GetObject", "s3:PutObject"]
+#           Resource: ["arn:aws:s3:::app-data/*"]
+#     deletionPolicy: Delete
+#     connection: {}
+
+users: []
+# users:
+#   - name: app-user
+#     accessKey: ""               # optional; defaults to the CR name
+#     # EITHER reference an existing Secret in the release namespace ...
+#     secretKeyRef:
+#       name: app-user-creds
+#       key: secretKey            # optional, defaults to secretKey
+#     # ... OR let the chart create one (WARNING: the secret key then lives
+#     # in the Helm release values; prefer secretKeyRef in production):
+#     secretKey: ""
+#     policies: ["app-data-rw"]
+#     enabled: true               # optional
+#     deletionPolicy: Delete
+#     connection: {}

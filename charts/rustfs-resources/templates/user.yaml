@@ -1,0 +1,57 @@
+{{- $seen := dict }}
+{{- range .Values.users }}
+{{- $name := include "rustfs-resources.entryName" (dict "entry" . "seen" $seen "kind" "users") }}
+{{- $id := printf "users[%s]" $name }}
+{{- $inlineKey := .secretKey | default "" }}
+{{- $ref := .secretKeyRef | default dict }}
+{{- $refName := $ref.name | default "" }}
+{{- if and (ne $inlineKey "") (ne $refName "") }}
+{{- fail (printf "%s: set either secretKeyRef or inline secretKey, not both" $id) }}
+{{- end }}
+{{- if and (eq $inlineKey "") (eq $refName "") }}
+{{- fail (printf "%s: a secret key source is required; set secretKeyRef (existing Secret) or secretKey (chart-created)" $id) }}
+{{- end }}
+{{- $secretName := ternary $refName (printf "%s-user-%s" $.Release.Name $name) (ne $refName "") }}
+---
+apiVersion: rustfs.com/v1alpha1
+kind: User
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "rustfs-resources.labels" $ | nindent 4 }}
+spec:
+  {{- include "rustfs-resources.connection" (dict "root" $ "entry" . "id" $id) | nindent 2 }}
+  {{- with .accessKey }}
+  accessKey: {{ . | quote }}
+  {{- end }}
+  secretKeyRef:
+    name: {{ $secretName }}
+    {{- if ne $refName "" }}
+    {{- with $ref.key }}
+    key: {{ . }}
+    {{- end }}
+    {{- else }}
+    key: secretKey
+    {{- end }}
+  {{- with .policies }}
+  policies:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- if hasKey . "enabled" }}
+  enabled: {{ .enabled }}
+  {{- end }}
+  {{- include "rustfs-resources.deletionPolicy" (dict "entry" . "id" $id) | nindent 2 }}
+{{- if eq $refName "" }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "rustfs-resources.labels" $ | nindent 4 }}
+type: Opaque
+stringData:
+  secretKey: {{ $inlineKey | quote }}
+{{- end }}
+{{- end }}

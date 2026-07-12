@@ -57,6 +57,10 @@ The chart can also bootstrap `ClusterConnection` resources (and their admin
 credentials Secrets) from values — see
 [`charts/rustfs-operator/README.md`](charts/rustfs-operator/README.md).
 
+Teams can declare their RustFS resources (Buckets, Policies, Users) from
+values with the [`rustfs-resources`](charts/rustfs-resources/README.md)
+chart — one release per namespace, reconciled by the operator.
+
 The main chart installs the CRDs from its `crds/` directory, which Helm
 never upgrades. For Helm-managed, value-controlled CRDs (per-CRD toggles,
 keep-on-uninstall policy, upgrades via `helm upgrade`), install the

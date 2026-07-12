@@ -1,0 +1,23 @@
+{{- $seen := dict }}
+{{- range .Values.policies }}
+{{- $name := include "rustfs-resources.entryName" (dict "entry" . "seen" $seen "kind" "policies") }}
+{{- $id := printf "policies[%s]" $name }}
+{{- if not .document }}
+{{- fail (printf "%s: 'document' is required" $id) }}
+{{- end }}
+---
+apiVersion: rustfs.com/v1alpha1
+kind: Policy
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "rustfs-resources.labels" $ | nindent 4 }}
+spec:
+  {{- include "rustfs-resources.connection" (dict "root" $ "entry" . "id" $id) | nindent 2 }}
+  {{- with .policyName }}
+  policyName: {{ . | quote }}
+  {{- end }}
+  document:
+    {{- toYaml .document | nindent 4 }}
+  {{- include "rustfs-resources.deletionPolicy" (dict "entry" . "id" $id) | nindent 2 }}
+{{- end }}

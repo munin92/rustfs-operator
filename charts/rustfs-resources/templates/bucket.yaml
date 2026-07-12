@@ -1,0 +1,24 @@
+{{- $seen := dict }}
+{{- range .Values.buckets }}
+{{- $name := include "rustfs-resources.entryName" (dict "entry" . "seen" $seen "kind" "buckets") }}
+{{- $id := printf "buckets[%s]" $name }}
+---
+apiVersion: rustfs.com/v1alpha1
+kind: Bucket
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "rustfs-resources.labels" $ | nindent 4 }}
+spec:
+  {{- include "rustfs-resources.connection" (dict "root" $ "entry" . "id" $id) | nindent 2 }}
+  {{- with .bucketName }}
+  bucketName: {{ . | quote }}
+  {{- end }}
+  {{- if hasKey . "versioning" }}
+  versioning: {{ .versioning }}
+  {{- end }}
+  {{- if hasKey . "quotaBytes" }}
+  quotaBytes: {{ .quotaBytes | int64 }}
+  {{- end }}
+  {{- include "rustfs-resources.deletionPolicy" (dict "entry" . "id" $id) | nindent 2 }}
+{{- end }}
