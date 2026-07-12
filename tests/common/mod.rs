@@ -7,7 +7,10 @@ use testcontainers::core::{IntoContainerPort, WaitFor};
 use testcontainers::runners::AsyncRunner;
 use testcontainers::{ContainerAsync, GenericImage, ImageExt};
 
-pub const RUSTFS_IMAGE: (&str, &str) = ("rustfs/rustfs", "1.0.0-beta.8");
+pub const RUSTFS_IMAGE: (&str, &str) = (
+    "ghcr.io/openprojectx/dockerhub/rustfs/rustfs",
+    "1.0.0-beta.8",
+);
 
 /// Container tests talk to 127.0.0.1; a system proxy must not intercept
 /// those connections (kube also refuses proxy env vars unless its proxy

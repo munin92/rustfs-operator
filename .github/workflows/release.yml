@@ -44,18 +44,24 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      # Binary artifact is opt-in: set the repository variable
+      # RELEASE_BINARY=true to build and attach it.
       - uses: dtolnay/rust-toolchain@stable
+        if: vars.RELEASE_BINARY == 'true'
       - uses: Swatinem/rust-cache@v2
+        if: vars.RELEASE_BINARY == 'true'
       - name: Build release binary
+        if: vars.RELEASE_BINARY == 'true'
         run: |
           cargo build --release --bin rustfs-operator
           cp target/release/rustfs-operator rustfs-operator-linux-amd64
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
+          # the glob matches nothing when the binary step is skipped
           files: |
             deploy/crds.yaml
-            rustfs-operator-linux-amd64
+            rustfs-operator-linux-amd64*
 
   charts:
     runs-on: ubuntu-latest

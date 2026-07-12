@@ -66,7 +66,8 @@ cargo run --release -- run
 Push a `v*` tag. The release workflow builds and pushes
 `ghcr.io/openprojectx/rustfs-operator:<version>`, packages the Helm chart to
 the `gh-pages` chart repository, and creates a GitHub release with the CRD
-manifest and a linux-amd64 binary attached.
+manifest attached. Set the repository variable `RELEASE_BINARY=true` to also
+build and attach a linux-amd64 binary.
 
 ## Behavior notes
 

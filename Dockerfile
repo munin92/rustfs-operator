@@ -1,8 +1,20 @@
-FROM rust:1.97.0-trixie AS builder
+FROM ghcr.io/openprojectx/dockerhub/library/rust:1.97.0-trixie AS builder
 WORKDIR /build
+
+# Dependency layer: build all dependencies against dummy sources so the
+# layer is keyed on Cargo.toml only and survives source-code changes
+# (persisted across CI runs by the buildx GHA cache).
 COPY Cargo.toml ./
+RUN mkdir src \
+    && echo 'fn main() {}' > src/main.rs \
+    && touch src/lib.rs \
+    && cargo build --release --bin rustfs-operator \
+    && rm -rf src
+
 COPY src ./src
-RUN cargo build --release --bin rustfs-operator
+# touch so cargo rebuilds the crate itself against the real sources
+RUN touch src/main.rs src/lib.rs \
+    && cargo build --release --bin rustfs-operator
 
 FROM debian:trixie-slim
 RUN apt-get update \

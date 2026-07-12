@@ -26,6 +26,7 @@ use rustfs_operator::crd::{
 use rustfs_operator::provider::RustFs;
 use rustfs_operator::reconcile;
 
+const K3S_IMAGE: &str = "ghcr.io/openprojectx/dockerhub/rancher/k3s";
 const K3S_TAG: &str = "v1.34.9-k3s1";
 const NS: &str = "default";
 
@@ -86,6 +87,7 @@ async fn operator_reconciles_crs_against_rustfs() {
     let conf_dir = tempfile::tempdir().expect("tempdir");
     let k3s = K3s::default()
         .with_conf_mount(conf_dir.path())
+        .with_name(K3S_IMAGE)
         .with_tag(K3S_TAG)
         .with_privileged(true)
         .with_userns_mode("host")
