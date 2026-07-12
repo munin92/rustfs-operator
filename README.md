@@ -103,10 +103,20 @@ build and attach a linux-amd64 binary.
 | Layer | Command | Needs |
 |-------|---------|-------|
 | Unit (mocked provider) | `cargo test` | – |
-| Integration (real RustFS) | `cargo test --features integration --test integration_rustfs` | Docker, `rustfs/rustfs:1.0.0-beta.8` |
-| E2E (real k3s + RustFS, controllers in-process) | `cargo test --features e2e --test e2e_k3s` | Docker, `rancher/k3s:v1.34.9-k3s1` |
+| Integration (real RustFS) | `cargo test --features integration --test integration_rustfs` | Docker |
+| E2E (real k3s + RustFS, controllers in-process) | `cargo test --features e2e --test e2e_k3s` | Docker |
+| Chart tests (lint, render, validation) | `bash scripts/chart-tests.sh` | helm |
+| Chart e2e (helm install on k3d, real operator image) | `IMAGE=<image> bash scripts/chart-e2e.sh` | Docker, k3d, helm, kubectl |
 
 The e2e test boots a k3s cluster and a RustFS server in containers, installs
 the CRDs, runs the controllers inside the test process, applies
 Bucket/User/Policy CRs and asserts both convergence in RustFS and finalizer
 cleanup on deletion.
+
+The chart e2e goes one layer further: it creates a k3d cluster, installs the
+CRDs chart, the operator chart (with a values-bootstrapped ClusterConnection)
+running the given image, and the `rustfs-resources` chart, then asserts the
+declared resources converge and that `helm uninstall` cleans up remote state
+via finalizers. All required images are preloaded into the cluster, so
+nothing is pulled from inside it. CI runs every layer; test images, the k3d
+binary and the rust toolchain are cached in the GitHub Actions cache.

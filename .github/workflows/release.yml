@@ -46,8 +46,16 @@ jobs:
       - uses: actions/checkout@v4
       # Binary artifact is opt-in: set the repository variable
       # RELEASE_BINARY=true to build and attach it.
+      - name: Cache rust toolchain
+        if: vars.RELEASE_BINARY == 'true'
+        uses: actions/cache@v4
+        with:
+          path: ~/.rustup/toolchains
+          key: rustup-${{ runner.os }}-1.97.0
       - uses: dtolnay/rust-toolchain@stable
         if: vars.RELEASE_BINARY == 'true'
+        with:
+          toolchain: "1.97.0"
       - uses: Swatinem/rust-cache@v2
         if: vars.RELEASE_BINARY == 'true'
       - name: Build release binary
