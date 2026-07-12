@@ -1,6 +1,6 @@
 apiVersion: v2
-name: rustfs-operator
-description: Kubernetes operator managing RustFS buckets, IAM users and policies
+name: rustfs-operator-crds
+description: CustomResourceDefinitions for the rustfs-operator, managed as Helm templates (upgradeable, value-controlled)
 type: application
 home: https://github.com/OpenProjectX/rustfs-operator
 sources:
@@ -9,6 +9,7 @@ keywords:
   - rustfs
   - s3
   - operator
+  - crds
 # version and appVersion are overwritten from the git tag by the release workflow
 version: 0.4.0
 appVersion: "0.4.0"

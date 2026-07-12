@@ -1,0 +1,16 @@
+# Add the helm.sh/resource-policy=keep annotation so `helm uninstall` leaves
+# the CRDs (and therefore all Bucket/User/Policy/ClusterConnection resources)
+# in place. Strongly recommended: deleting a CRD cascades to every CR of that
+# kind cluster-wide.
+keep: true
+
+# Extra metadata applied to all CRDs.
+annotations: {}
+labels: {}
+
+# Per-CRD toggles.
+crds:
+  bucket: true
+  user: true
+  policy: true
+  clusterConnection: true

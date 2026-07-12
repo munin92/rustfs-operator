@@ -57,6 +57,14 @@ The chart can also bootstrap `ClusterConnection` resources (and their admin
 credentials Secrets) from values — see
 [`charts/rustfs-operator/README.md`](charts/rustfs-operator/README.md).
 
+The main chart installs the CRDs from its `crds/` directory, which Helm
+never upgrades. For Helm-managed, value-controlled CRDs (per-CRD toggles,
+keep-on-uninstall policy, upgrades via `helm upgrade`), install the
+[`rustfs-operator-crds`](charts/rustfs-operator-crds/README.md) chart first —
+the main chart automatically skips CRDs that already exist. CRD manifests
+and the CRDs chart templates are regenerated from the Rust types with
+`python3 scripts/generate-crds.py`.
+
 Or run from source against the current kubeconfig:
 
 ```sh

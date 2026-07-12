@@ -1,0 +1,83 @@
+{{- if .Values.crds.clusterConnection }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: clusterconnections.rustfs.com
+  {{- if or .Values.keep .Values.annotations }}
+  annotations:
+    {{- if .Values.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: rustfs-operator-crds
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+    {{- with .Values.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  group: rustfs.com
+  names:
+    categories: []
+    kind: ClusterConnection
+    plural: clusterconnections
+    shortNames:
+    - rfcc
+    singular: clusterconnection
+  scope: Cluster
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.endpoint
+      name: Endpoint
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for ClusterConnectionSpec via `CustomResource`
+        properties:
+          spec:
+            description: |-
+              A centrally managed connection to a RustFS server. Cluster-scoped; the
+              referenced credentials Secret lives in the operator's own namespace, so
+              application namespaces never see admin credentials.
+            properties:
+              allowedNamespaces:
+                description: |-
+                  Namespaces whose resources may use this connection.
+                  Absent means all namespaces are allowed.
+                items:
+                  type: string
+                nullable: true
+                type: array
+              credentialsSecretRef:
+                description: |-
+                  Name of the Secret in the operator's namespace holding `accessKey`
+                  and `secretKey`.
+                type: string
+              endpoint:
+                description: RustFS endpoint URL, e.g. `http://rustfs.storage.svc:9000`.
+                type: string
+              insecure:
+                default: false
+                description: Skip TLS verification.
+                type: boolean
+              region:
+                description: AWS region; defaults to `us-east-1`.
+                nullable: true
+                type: string
+            required:
+            - credentialsSecretRef
+            - endpoint
+            type: object
+        required:
+        - spec
+        title: ClusterConnection
+        type: object
+    served: true
+    storage: true
+    subresources: {}
+{{- end }}

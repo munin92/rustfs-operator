@@ -1,0 +1,109 @@
+{{- if .Values.crds.policy }}
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: policies.rustfs.com
+  {{- if or .Values.keep .Values.annotations }}
+  annotations:
+    {{- if .Values.keep }}
+    helm.sh/resource-policy: keep
+    {{- end }}
+    {{- with .Values.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- end }}
+  labels:
+    app.kubernetes.io/name: rustfs-operator-crds
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+    helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version }}
+    {{- with .Values.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  group: rustfs.com
+  names:
+    categories: []
+    kind: Policy
+    plural: policies
+    shortNames:
+    - rfp
+    singular: policy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.ready
+      name: Ready
+      type: boolean
+    - jsonPath: .status.message
+      name: Message
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: Auto-generated derived type for PolicySpec via `CustomResource`
+        properties:
+          spec:
+            description: An IAM policy in RustFS.
+            properties:
+              connection:
+                description: |-
+                  Reference to a RustFS server. Exactly one of `secretRef` / `clusterRef`
+                  must be set (validated at reconcile time).
+                properties:
+                  clusterRef:
+                    description: Name of a cluster-scoped ClusterConnection.
+                    nullable: true
+                    type: string
+                  secretRef:
+                    description: |-
+                      Name of a Secret in the resource's namespace holding `endpoint`,
+                      `accessKey` and `secretKey` (optional: `region`, `insecure`).
+                    nullable: true
+                    type: string
+                type: object
+              deletionPolicy:
+                default: Delete
+                description: What happens to the remote resource when the CR is deleted.
+                enum:
+                - Delete
+                - Retain
+                type: string
+              document:
+                description: IAM policy document, written inline as YAML/JSON.
+                type: object
+                x-kubernetes-preserve-unknown-fields: true
+              policyName:
+                description: Policy name in RustFS; defaults to the CR name.
+                nullable: true
+                type: string
+            required:
+            - connection
+            - document
+            type: object
+          status:
+            description: Shared status for all RustFS resources.
+            nullable: true
+            properties:
+              message:
+                description: Human-readable state or last error.
+                nullable: true
+                type: string
+              observedGeneration:
+                description: Generation last acted upon.
+                format: int64
+                nullable: true
+                type: integer
+              ready:
+                default: false
+                description: True once the remote resource matches the spec.
+                type: boolean
+            type: object
+        required:
+        - spec
+        title: Policy
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+{{- end }}
