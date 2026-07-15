@@ -55,6 +55,54 @@ spec:
                 - Delete
                 - Retain
                 type: string
+              lifecycle:
+                description: |-
+                  Lifecycle rules; unset means unmanaged (the operator never reads or writes
+                  the bucket's lifecycle configuration). An explicitly EMPTY list is not the
+                  same thing: it means "no rules", and removes any configuration present on
+                  the bucket.
+                items:
+                  description: |-
+                    A single S3 lifecycle rule.
+
+                    Deliberately a *subset* of the S3 lifecycle spec: expiration by age and
+                    aborting stale multipart uploads. Transitions and non-current-version rules
+                    are omitted — they only make sense with storage tiers / versioning, which
+                    RustFS does not offer, and a CRD field that silently does nothing is worse
+                    than no field.
+                  properties:
+                    abortIncompleteMultipartUploadDays:
+                      description: |-
+                        Abort multipart uploads left incomplete for this many days. Worth setting
+                        on any bucket that takes large writes: aborted parts are invisible to a
+                        normal LIST and still consume the disk.
+                      format: int32
+                      nullable: true
+                      type: integer
+                    expirationDays:
+                      description: Expire objects this many days after creation.
+                      format: int32
+                      nullable: true
+                      type: integer
+                    id:
+                      description: Rule ID, unique within the bucket.
+                      type: string
+                    prefix:
+                      description: Object-key prefix the rule applies to. Unset = the whole bucket.
+                      nullable: true
+                      type: string
+                    status:
+                      default: Enabled
+                      description: Enabled (default) or Disabled.
+                      enum:
+                      - Enabled
+                      - Disabled
+                      type: string
+                  required:
+                  - id
+                  type: object
+                nullable: true
+                type: array
               quotaBytes:
                 description: Hard quota in bytes; unset means unmanaged.
                 format: uint64

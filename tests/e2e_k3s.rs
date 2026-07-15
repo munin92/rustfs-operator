@@ -215,6 +215,7 @@ async fn operator_reconciles_crs_against_rustfs() {
                     bucket_name: None,
                     versioning: Some(true),
                     quota_bytes: Some(10 * 1024 * 1024),
+                    lifecycle: None,
                     deletion_policy: DeletionPolicy::Delete,
                 },
             ),
@@ -425,6 +426,7 @@ async fn operator_reconciles_crs_against_rustfs() {
                     bucket_name: None,
                     versioning: None,
                     quota_bytes: None,
+                    lifecycle: None,
                     deletion_policy: DeletionPolicy::Delete,
                 },
             ),
@@ -464,6 +466,7 @@ async fn operator_reconciles_crs_against_rustfs() {
                     versioning: None,
                     quota_bytes: None,
                     // Retain: cleanup must not need the (denied) connection
+                    lifecycle: None,
                     deletion_policy: DeletionPolicy::Retain,
                 },
             ),

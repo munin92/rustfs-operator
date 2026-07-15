@@ -6,6 +6,7 @@
 
 mod common;
 
+use rc_core::lifecycle::{LifecycleExpiration, LifecycleRule, LifecycleRuleStatus};
 use rustfs_operator::provider::RustFs;
 use serde_json::json;
 
@@ -29,6 +30,50 @@ async fn provider_manages_buckets_policies_and_users() {
     assert_eq!(
         fs.get_bucket_quota("it-bucket").await.unwrap(),
         Some(10 * 1024 * 1024)
+    );
+
+    // --- bucket lifecycle ---
+    assert!(
+        fs.get_bucket_lifecycle("it-bucket")
+            .await
+            .unwrap()
+            .is_empty(),
+        "a fresh bucket must report no lifecycle rules, not an error"
+    );
+
+    let rule = LifecycleRule {
+        id: "expire-cache".into(),
+        status: LifecycleRuleStatus::Enabled,
+        prefix: Some("cache/".into()),
+        tags: None,
+        expiration: Some(LifecycleExpiration {
+            days: Some(1),
+            date: None,
+        }),
+        transition: None,
+        noncurrent_version_expiration: None,
+        noncurrent_version_transition: None,
+        expired_object_delete_marker: None,
+        abort_incomplete_multipart_upload_days: Some(1),
+    };
+    fs.set_bucket_lifecycle("it-bucket", vec![rule])
+        .await
+        .unwrap();
+
+    let got = fs.get_bucket_lifecycle("it-bucket").await.unwrap();
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].id, "expire-cache");
+    assert_eq!(got[0].prefix.as_deref(), Some("cache/"));
+    assert_eq!(got[0].expiration.as_ref().and_then(|e| e.days), Some(1));
+    assert_eq!(got[0].abort_incomplete_multipart_upload_days, Some(1));
+
+    fs.delete_bucket_lifecycle("it-bucket").await.unwrap();
+    assert!(
+        fs.get_bucket_lifecycle("it-bucket")
+            .await
+            .unwrap()
+            .is_empty(),
+        "lifecycle configuration must be gone after delete"
     );
 
     // --- policies ---

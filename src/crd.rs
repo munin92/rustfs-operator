@@ -96,6 +96,44 @@ pub enum DeletionPolicy {
     Retain,
 }
 
+/// Whether a lifecycle rule is active.
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, JsonSchema, PartialEq)]
+pub enum LifecycleStatus {
+    /// The rule is evaluated by the scanner.
+    #[default]
+    Enabled,
+    /// The rule is kept but not evaluated.
+    Disabled,
+}
+
+/// A single S3 lifecycle rule.
+///
+/// Deliberately a *subset* of the S3 lifecycle spec: expiration by age and
+/// aborting stale multipart uploads. Transitions and non-current-version rules
+/// are omitted — they only make sense with storage tiers / versioning, which
+/// RustFS does not offer, and a CRD field that silently does nothing is worse
+/// than no field.
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct LifecycleRuleSpec {
+    /// Rule ID, unique within the bucket.
+    pub id: String,
+    /// Enabled (default) or Disabled.
+    #[serde(default)]
+    pub status: LifecycleStatus,
+    /// Object-key prefix the rule applies to. Unset = the whole bucket.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix: Option<String>,
+    /// Expire objects this many days after creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expiration_days: Option<i32>,
+    /// Abort multipart uploads left incomplete for this many days. Worth setting
+    /// on any bucket that takes large writes: aborted parts are invisible to a
+    /// normal LIST and still consume the disk.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub abort_incomplete_multipart_upload_days: Option<i32>,
+}
+
 /// Shared status for all RustFS resources.
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -153,6 +191,12 @@ pub struct BucketSpec {
     /// Hard quota in bytes; unset means unmanaged.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub quota_bytes: Option<u64>,
+    /// Lifecycle rules; unset means unmanaged (the operator never reads or writes
+    /// the bucket's lifecycle configuration). An explicitly EMPTY list is not the
+    /// same thing: it means "no rules", and removes any configuration present on
+    /// the bucket.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<Vec<LifecycleRuleSpec>>,
     #[serde(default)]
     pub deletion_policy: DeletionPolicy,
 }

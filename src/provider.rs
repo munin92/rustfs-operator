@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use rc_core::admin::{
     AdminApi, CreateServiceAccountRequest, Policy, PolicyEntity, ServiceAccount, User, UserStatus,
 };
+use rc_core::lifecycle::LifecycleRule;
 use rc_core::traits::ObjectStore;
 use rc_core::{Alias, Error as RcError};
 use rc_s3::{AdminClient, S3Client};
@@ -56,6 +57,13 @@ pub trait RustFs: Send + Sync {
     async fn set_versioning(&self, bucket: &str, enabled: bool) -> Result<()>;
     async fn get_bucket_quota(&self, bucket: &str) -> Result<Option<u64>>;
     async fn set_bucket_quota(&self, bucket: &str, quota: u64) -> Result<()>;
+    /// Current lifecycle rules. Empty when the bucket has no configuration.
+    async fn get_bucket_lifecycle(&self, bucket: &str) -> Result<Vec<LifecycleRule>>;
+    /// Replace the bucket's lifecycle configuration. RustFS has no per-rule API —
+    /// the whole configuration is written at once.
+    async fn set_bucket_lifecycle(&self, bucket: &str, rules: Vec<LifecycleRule>) -> Result<()>;
+    /// Remove the lifecycle configuration entirely.
+    async fn delete_bucket_lifecycle(&self, bucket: &str) -> Result<()>;
 
     // Users
     async fn get_user(&self, access_key: &str) -> Result<Option<User>>;
@@ -202,6 +210,21 @@ impl RustFs for RustFsProvider {
         Self::cli(&format!("quota set $ALIAS/{bucket} {quota}"));
         self.admin.set_bucket_quota(bucket, quota).await?;
         Ok(())
+    }
+
+    async fn get_bucket_lifecycle(&self, bucket: &str) -> Result<Vec<LifecycleRule>> {
+        Self::cli(&format!("ilm rule list $ALIAS/{bucket}"));
+        Ok(self.s3.get_bucket_lifecycle(bucket).await?)
+    }
+
+    async fn set_bucket_lifecycle(&self, bucket: &str, rules: Vec<LifecycleRule>) -> Result<()> {
+        Self::cli(&format!("ilm rule add $ALIAS/{bucket} (x{})", rules.len()));
+        Ok(self.s3.set_bucket_lifecycle(bucket, rules).await?)
+    }
+
+    async fn delete_bucket_lifecycle(&self, bucket: &str) -> Result<()> {
+        Self::cli(&format!("ilm rule rm --all --force $ALIAS/{bucket}"));
+        Ok(self.s3.delete_bucket_lifecycle(bucket).await?)
     }
 
     async fn get_user(&self, access_key: &str) -> Result<Option<User>> {
